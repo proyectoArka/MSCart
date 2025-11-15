@@ -5,22 +5,29 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.Table;
 import java.time.LocalDateTime;
 
-@Data // Genera getters, setters, toString, equals, hashCode (Lombok)
-@Builder // Patrón Builder para creación (Lombok)
+@Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Table("carrito") // Mapea a la tabla 'carrito' en PostgreSQL
+@Table("carrito")
 public class Cart {
-
-    @Id // Clave primaria
+    @Id
+    @Column("id")
     private Long id;
-
-    // Identificador único del usuario (viene del JWT, e.g., el email)
+    @Column("userid")
     private Long userId;
-
+    @Column("createdat")
     private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    @Column("estado")
+    private boolean estado;
+    @Column("ultimo_movimiento")
+    private LocalDateTime ultimoMovimiento;
+    @Column("numero_productos")
+    private Long numeroProductos;
+    @Column("emailenviado")
+    private boolean emailEnviado;
 }

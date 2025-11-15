@@ -1,5 +1,6 @@
 package com.Arka.MSCart.repository;
 
+import com.Arka.MSCart.model.Cart;
 import com.Arka.MSCart.model.CartDetail;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 import reactor.core.publisher.Flux;
@@ -17,4 +18,7 @@ public interface CartDetailRepository extends ReactiveCrudRepository<CartDetail,
      * Busca un ítem específico de un producto dentro de un carrito.
      */
     Mono<CartDetail> findByCarritoIdAndProductoId(Long carritoId, Long productoId);
+    Mono<CartDetail> save(CartDetail cart);
+    Flux<CartDetail> findAllByCarritoId(Long carritoId);
+    Mono<Long> countByCarritoId(Long carritoId);
 }

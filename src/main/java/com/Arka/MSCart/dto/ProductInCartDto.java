@@ -4,17 +4,17 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import java.math.BigDecimal;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ProductoStockDTO {
-
-    // Usamos el ID para asegurar la referencia
+public class ProductInCartDto {
     private Long id;
+    private Long productoId;
     private String nombre;
-    private Integer stock;
-    private BigDecimal precio;
+    private String descripcion;
+    private Long cantidad;
+    private int precioUnitario;
+    private int precioTotal;
 }

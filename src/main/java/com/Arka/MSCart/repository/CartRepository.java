@@ -6,4 +6,8 @@ import reactor.core.publisher.Mono;
 
 public interface CartRepository extends ReactiveCrudRepository<Cart, Long> {
     Mono<Cart> findByUserId(Long userId);
+    Mono<Cart> save(Cart cart);
+    Mono<Cart> findById(Long id);
+    Mono<Void> deleteByUserId(Long userId);
+
 }

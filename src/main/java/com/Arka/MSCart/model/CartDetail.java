@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Column;
 import org.springframework.data.relational.core.mapping.Table;
 import java.math.BigDecimal;
 
@@ -16,9 +17,14 @@ import java.math.BigDecimal;
 public class CartDetail {
 
     @Id
+    @Column("id")
     private Long id;
+    @Column("carrito_id")
     private Long carritoId;
+    @Column("producto_id")
     private Long productoId;
-    private Integer cantidad;
-    private BigDecimal precioUnitario;
+    @Column("cantidad")
+    private Long cantidad;
+    @Column("precio_total")
+    private int precioTotal;
 }
