@@ -123,6 +123,8 @@ Este microservicio sigue el patrón de **Arquitectura de Tres Capas (Three-Tier 
 ### Comunicación entre Microservicios
 - **Spring Cloud Netflix Eureka** - Descubrimiento de servicios
 - **Spring Cloud Config** - Configuración centralizada
+- **Spring Cloud Bus** - Propagación de cambios de configuración
+- **RabbitMQ** - Message broker para Spring Cloud Bus
 - **WebClient** - Cliente HTTP reactivo
 
 ### Documentación
@@ -153,6 +155,12 @@ mvn -version
 
 # PostgreSQL 15+
 psql --version
+
+# RabbitMQ (para Spring Cloud Bus)
+# Opción 1: Docker
+docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+
+# Opción 2: Ver RABBITMQ_SETUP.md para instalación local
 ```
 
 ### 1. Clonar el Repositorio
@@ -820,6 +828,77 @@ services:
     ports:
       - "5432:5432"
 ```
+
+---
+
+## 🔄 Spring Cloud Bus + RabbitMQ
+
+### Actualización de Configuración sin Reiniciar
+
+MSCart implementa **Spring Cloud Bus con RabbitMQ** para actualizar la configuración automáticamente sin necesidad de reiniciar el servicio.
+
+#### Configuración
+```yaml
+spring:
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+  cloud:
+    bus:
+      enabled: true
+      refresh:
+        enabled: true
+```
+
+#### Clases con @RefreshScope
+- `InventarioClient` - URLs de MS-Inventario
+- `AuthClient` - URLs de MS-Autenticación
+- `OrdenClient` - URLs de MS-Órdenes
+
+#### Cómo Actualizar Configuración
+
+**Opción 1: Refresh Manual**
+```bash
+# Refrescar solo MSCart
+curl -X POST http://localhost:8080/actuator/refresh
+
+# Refrescar TODOS los microservicios via Bus
+curl -X POST http://localhost:8080/actuator/busrefresh
+```
+
+**Opción 2: Webhook Automático de GitHub**
+1. Configurar webhook en el repositorio del Config Server
+2. URL: `http://config-server:8888/monitor`
+3. Cada push al repositorio actualiza todos los microservicios automáticamente
+
+#### Flujo de Actualización
+```
+1. Modificar MSCart.yml en Config Server (GitHub)
+   ↓
+2. Git push → GitHub Webhook → Config Server
+   ↓
+3. Config Server → RabbitMQ (exchange: springCloudBus)
+   ↓
+4. RabbitMQ → Todas las instancias de MSCart
+   ↓
+5. Spring Cloud Bus → @RefreshScope
+   ↓
+6. ✅ Configuración actualizada sin downtime
+```
+
+#### Verificar Funcionamiento
+```bash
+# Ver exchanges en RabbitMQ
+curl -u guest:guest http://localhost:15672/api/exchanges
+
+# Management UI
+http://localhost:15672 (usuario: guest, password: guest)
+```
+
+Para más detalles, ver [RABBITMQ_SETUP.md](RABBITMQ_SETUP.md)
 
 ---
 

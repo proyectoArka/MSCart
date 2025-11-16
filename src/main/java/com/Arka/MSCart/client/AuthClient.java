@@ -3,6 +3,7 @@ package com.Arka.MSCart.client;
 import com.Arka.MSCart.dto.AdminDto.ConsultUserInAuthDto;
 import com.Arka.MSCart.exception.UsuarioNoEncontradoException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
@@ -14,8 +15,11 @@ import java.net.URI;
 /**
  * Cliente para comunicación con el Microservicio de Autenticación
  * Capa de Acceso a Datos - Comunicación Externa
+ *
+ * @RefreshScope permite recargar valores de configuración sin reiniciar el servicio
  */
 @Component
+@RefreshScope
 public class AuthClient {
 
     private final WebClient.Builder webClientBuilder;

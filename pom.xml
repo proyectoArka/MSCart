@@ -94,6 +94,11 @@
 			<artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
 			<version>2.7.0</version>
 		</dependency>
+		<!-- Spring Cloud Bus con RabbitMQ para refresh automático -->
+		<dependency>
+			<groupId>org.springframework.cloud</groupId>
+			<artifactId>spring-cloud-starter-bus-amqp</artifactId>
+		</dependency>
 	</dependencies>
 	<dependencyManagement>
 		<dependencies>
