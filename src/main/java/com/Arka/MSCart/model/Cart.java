@@ -18,16 +18,28 @@ public class Cart {
     @Id
     @Column("id")
     private Long id;
+
     @Column("userid")
     private Long userId;
+
     @Column("createdat")
     private LocalDateTime createdAt;
+
     @Column("estado")
     private boolean estado;
+
     @Column("ultimo_movimiento")
     private LocalDateTime ultimoMovimiento;
+
     @Column("numero_productos")
     private Long numeroProductos;
+
+    @Column("total_unidades")
+    private Long totalUnidades;
+
+    @Column("precio_total")
+    private Integer precioTotal;
+
     @Column("emailenviado")
     private boolean emailEnviado;
 }

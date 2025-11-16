@@ -1,10 +1,11 @@
 package com.Arka.MSCart.service;
 
+import com.Arka.MSCart.client.AuthClient;
+import com.Arka.MSCart.client.InventarioClient;
 import com.Arka.MSCart.dto.AdminDto.CartDto;
-import com.Arka.MSCart.dto.AdminDto.ConsultUserInAuthDto;
 import com.Arka.MSCart.dto.CartWithProductsDto;
 import com.Arka.MSCart.dto.ProductInCartDto;
-import com.Arka.MSCart.exception.UsuarioNoEncontradoException;
+import com.Arka.MSCart.exception.CarritoNoEncontradoException;
 import com.Arka.MSCart.model.Cart;
 import com.Arka.MSCart.repository.CartDetailRepository;
 import com.Arka.MSCart.repository.CartRepository;
@@ -13,14 +14,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
-import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.net.URI;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
@@ -30,34 +27,29 @@ public class CartAdminService {
     private static final Logger log = LoggerFactory.getLogger(CartAdminService.class);
 
     private final CartRepository cartRepository;
-    private final WebClient.Builder webClientBuilder;
     private final CartDetailRepository cartDetailRepository;
-    private final CartCustomerService cartCustomerService;
+    private final AuthClient authClient;
+    private final InventarioClient inventarioClient;
 
-    @Value("${ms.auth.baseUri}")
-    private String authBaseUri;
-
-    @Value("${ms.auth.uriPath}")
-    private String authUriPath;
-
-    // tiempo de avandono de carrito en minutos
+    // Tiempo de abandono de carrito en minutos
     @Value("${ms.cart.abandonCart.time}")
     private int cartAbandonTimeMinutes;
 
-    // tiempo en minutos de cada cuanto se ejecuta la funcion para determinar si un carrito esta abandonado
+    // Tiempo en minutos de cada cuanto se ejecuta la función para determinar si un carrito está abandonado
     @Value("${ms.cart.functionAbandonCart.time}")
     private int functionAbandonCartTimeMinutes;
 
     public CartAdminService(CartRepository cartRepository,
-                            WebClient.Builder webClientBuilder,
                             CartDetailRepository cartDetailRepository,
-                            CartCustomerService cartCustomerService) {
+                            AuthClient authClient,
+                            InventarioClient inventarioClient) {
         this.cartRepository = cartRepository;
-        this.webClientBuilder = webClientBuilder;
         this.cartDetailRepository = cartDetailRepository;
-        this.cartCustomerService = cartCustomerService;
+        this.authClient = authClient;
+        this.inventarioClient = inventarioClient;
     }
 
+    // Función que se ejecuta periódicamente para determinar si un carrito está abandonado
     @PostConstruct
     public void determinarSiUnCartEstaAbandonado() {
         Duration intervaloEjecucionFuncion = Duration.ofMinutes(functionAbandonCartTimeMinutes);
@@ -84,30 +76,10 @@ public class CartAdminService {
                 .subscribe();
     }
 
-    public Mono<ConsultUserInAuthDto> getConsultUserInAuth(Long cartId) {
-        String fullPath = authUriPath.contains("{") ? authUriPath : authUriPath + "/{id}";
-
-        URI uri = UriComponentsBuilder
-                .fromHttpUrl(authBaseUri)
-                .path(fullPath)
-                .buildAndExpand(cartId)
-                .toUri();
-
-        return webClientBuilder.build()
-                .get()
-                .uri(uri)
-                .retrieve()
-                .bodyToMono(ConsultUserInAuthDto.class)
-                .onErrorResume(WebClientResponseException.InternalServerError.class, ex ->
-                        Mono.error(new UsuarioNoEncontradoException(
-                                "el usuario con ID " + cartId + " no encontrado"
-                        ))
-                );
-    }
-
+    // Obtiene todos los carritos con información de usuario
     public Flux<CartDto> getAllCartsAdmin() {
         return cartRepository.findAll()
-                .flatMap(cart -> getConsultUserInAuth(cart.getUserId())
+                .flatMap(cart -> authClient.consultarUsuario(cart.getUserId())
                         .map(userDto -> new CartDto(
                                 cart.getId(),
                                 userDto.getName(),
@@ -119,11 +91,12 @@ public class CartAdminService {
                 );
     }
 
+    // Obtiene todos los carritos abandonados con información de usuario
     public Flux<CartDto> getAbandonedCarts() {
         return cartRepository.findAll()
                 .filter(cart -> !cart.isEstado())
                 .flatMap(cart ->
-                        getConsultUserInAuth(cart.getUserId())
+                        authClient.consultarUsuario(cart.getUserId())
                             .map(userDto -> new CartDto(
                                 cart.getId(),
                                 userDto.getName(),
@@ -135,17 +108,26 @@ public class CartAdminService {
                 );
     }
 
+    // Obtiene un carrito con sus productos por ID de carrito
     public Mono<CartWithProductsDto> getCartWithProductsIdCart(Long cartId) {
         return cartRepository.findById(cartId)
-                // Si no se encuentra el carrito, lanzar una excepción personalizada
-                .switchIfEmpty(reactor.core.publisher.Mono.error(
-                        new com.Arka.MSCart.exception.ProductoNoEncontradoException("Carrito no encontrado con el id " + cartId)))
-
-                // Por cada carrito encontrado, obtener sus detalles y la información de los productos
+                .switchIfEmpty(Mono.error(
+                        CarritoNoEncontradoException.conId(cartId)))
                 .flatMap(cart ->
+                    // Consultar información del usuario en paralelo con productos
+                    Mono.zip(
+                        // 1. Obtener información del usuario
+                        authClient.consultarUsuario(cart.getUserId())
+                                .onErrorResume(ex -> {
+                                    log.warn("Error consultando usuario {} para carrito {}: {}",
+                                            cart.getUserId(), cartId, ex.getMessage());
+                                    return Mono.empty();
+                                }),
+
+                        // 2. Obtener productos del carrito
                         cartDetailRepository.findAllByCarritoId(cart.getId())
                                 .flatMap(detail ->
-                                        cartCustomerService.consultarProductoInventario(detail.getProductoId())
+                                        inventarioClient.consultarProducto(detail.getProductoId())
                                                 .map(inv -> ProductInCartDto.builder()
                                                         .id(detail.getId())
                                                         .productoId(detail.getProductoId())
@@ -166,17 +148,38 @@ public class CartAdminService {
                                                         .build()))
                                 )
                                 .collectList()
-                                .map(products -> {
-                                    CartWithProductsDto cartDto = new CartWithProductsDto();
-                                    cartDto.setCartId(cart.getId());
-                                    cartDto.setUserId(cart.getUserId());
-                                    cartDto.setNumeroProductos(cart.getNumeroProductos());
-                                    cartDto.setCreatedAt(cart.getCreatedAt());
-                                    cartDto.setEstado(cart.isEstado());
-                                    cartDto.setUltimoMovimiento(cart.getUltimoMovimiento());
-                                    cartDto.setProducts(products);
-                                    return cartDto;
-                                })
+                    )
+                    .map(tuple -> {
+                        var userDto = tuple.getT1();
+                        var products = tuple.getT2();
+
+                        CartWithProductsDto cartDto = new CartWithProductsDto();
+                        cartDto.setCartId(cart.getId());
+                        cartDto.setUserId(cart.getUserId());
+
+                        // Información del usuario
+                        if (userDto != null) {
+                            cartDto.setNombreUsuario(userDto.getName());
+                            cartDto.setDireccionUsuario(userDto.getDireccion());
+                            cartDto.setTelefonoUsuario(userDto.getTelefono());
+                        } else {
+                            cartDto.setNombreUsuario("Usuario no disponible");
+                            cartDto.setDireccionUsuario("No disponible");
+                            cartDto.setTelefonoUsuario("No disponible");
+                        }
+
+                        // Convertir estado booleano a texto
+                        cartDto.setEstadoCarrito(cart.isEstado() ? "activo" : "inactivo");
+
+                        cartDto.setNumeroProductos(cart.getNumeroProductos());
+                        cartDto.setTotalUnidades(cart.getTotalUnidades());
+                        cartDto.setPrecioTotal(cart.getPrecioTotal());
+                        cartDto.setCreatedAt(cart.getCreatedAt());
+                        cartDto.setUltimoMovimiento(cart.getUltimoMovimiento());
+                        cartDto.setProducts(products);
+
+                        return cartDto;
+                    })
                 );
     }
 

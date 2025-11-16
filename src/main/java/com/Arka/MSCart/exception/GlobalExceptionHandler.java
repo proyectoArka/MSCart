@@ -6,39 +6,43 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
 
+// Manejador global de excepciones para la aplicación
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    // ========== EXCEPCIONES DE NEGOCIO (400 BAD REQUEST) ==========
+
+    // Maneja carrito vacío
     @ExceptionHandler(CarritoVacioException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public ErrorDetails handleProductoNoEncontrado(CarritoVacioException ex) {
+    public ErrorDetails handleCarritoVacio(CarritoVacioException ex) {
         return new ErrorDetails(
-                HttpStatus.NOT_FOUND.value(),
+                HttpStatus.BAD_REQUEST.value(),
                 ex.getMessage()
         );
     }
 
-    // 1. Maneja Producto No Encontrado (Ej. 404 del Microservicio)
-    @ExceptionHandler(ProductoNoEncontradoException.class)
-    @ResponseStatus(HttpStatus.NOT_FOUND)
-    public ErrorDetails handleProductoNoEncontrado(ProductoNoEncontradoException ex) {
+    // Maneja stock insuficiente
+    @ExceptionHandler(StockInsuficienteException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorDetails handleStockInsuficiente(StockInsuficienteException ex) {
         return new ErrorDetails(
-                HttpStatus.NOT_FOUND.value(),
+                HttpStatus.BAD_REQUEST.value(),
                 ex.getMessage()
         );
     }
 
-    // 2. Maneja Excepción de Stock Insuficiente (Error de Negocio/Cliente)
+    // Maneja estado ilegal
     @ExceptionHandler(IllegalStateException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ErrorDetails handleIllegalState(IllegalStateException ex) {
         return new ErrorDetails(
                 HttpStatus.BAD_REQUEST.value(),
-                "Error de Stock: " + ex.getMessage()
+                ex.getMessage()
         );
     }
 
-    // 3. Maneja Errores de Validación de DTOs (@Valid)
+    // Maneja errores de validación de datos
     @ExceptionHandler(WebExchangeBindException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ErrorDetails handleWebExchangeBindException(WebExchangeBindException ex) {
@@ -52,7 +56,41 @@ public class GlobalExceptionHandler {
         );
     }
 
-    // 4. NUEVO: Maneja errores de servicio externo
+    // ========== EXCEPCIONES DE RECURSO NO ENCONTRADO (404 NOT FOUND) ==========
+
+    // Maneja producto no encontrado
+    @ExceptionHandler(ProductoNoEncontradoException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorDetails handleProductoNoEncontrado(ProductoNoEncontradoException ex) {
+        return new ErrorDetails(
+                HttpStatus.NOT_FOUND.value(),
+                ex.getMessage()
+        );
+    }
+
+    // Maneja carrito no encontrado
+    @ExceptionHandler(CarritoNoEncontradoException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorDetails handleCarritoNoEncontrado(CarritoNoEncontradoException ex) {
+        return new ErrorDetails(
+                HttpStatus.NOT_FOUND.value(),
+                ex.getMessage()
+        );
+    }
+
+    // Maneja usuario no encontrado
+    @ExceptionHandler(UsuarioNoEncontradoException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorDetails handleUsuarioNoEncontrado(UsuarioNoEncontradoException ex) {
+        return new ErrorDetails(
+                HttpStatus.NOT_FOUND.value(),
+                ex.getMessage()
+        );
+    }
+
+    // ========== EXCEPCIONES DE SERVICIOS EXTERNOS (503 SERVICE UNAVAILABLE) ==========
+
+    // Maneja errores de servicios externos
     @ExceptionHandler(ServicioExternoException.class)
     @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
     public ErrorDetails handleServicioExterno(ServicioExternoException ex) {
@@ -62,5 +100,7 @@ public class GlobalExceptionHandler {
         );
     }
 
+    // Clase para representar los detalles de un error
     public record ErrorDetails(int status, String message) {}
 }
+

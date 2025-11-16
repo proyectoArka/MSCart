@@ -8,11 +8,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 @Configuration
 public class WebClientConfig {
 
-    /**
-     * @LoadBalanced: Permite usar el nombre del servicio de Eureka (e.g., "inventory-service")
-     * en lugar de una URL y puerto específicos.
-     * Esto es crucial para la comunicación entre microservicios.
-     */
+    // Bean para WebClient con balanceo de carga
     @Bean
     @LoadBalanced
     public WebClient.Builder loadBalancedWebClientBuilder() {

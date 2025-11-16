@@ -1,5 +1,7 @@
 package com.Arka.MSCart.service;
 
+import com.Arka.MSCart.client.AuthClient;
+import com.Arka.MSCart.client.InventarioClient;
 import com.Arka.MSCart.dto.notificationDto.CarritoAbandonado;
 import com.Arka.MSCart.dto.notificationDto.EmailRequest;
 import com.Arka.MSCart.dto.notificationDto.ProductoAbandonado;
@@ -14,20 +16,30 @@ import org.springframework.web.client.RestTemplate;
 public class NotificationCartAbandonedService {
 
     private final CartRepository cartRepository;
-    private final CartAdminService cartAdminService;
     private final CartDetailRepository cartDetailRepository;
-    private final CartCustomerService cartCustomerService;
+    private final AuthClient authClient;
+    private final InventarioClient inventarioClient;
+
+    @Value("${lambda.email.url}")
+    private String lambdaEmailUrl;
+
+    private static final String TEMPLATE_CARRITO =
+            "<!DOCTYPE html><html><head><title>¡Tu Carrito Te Espera! - Arka</title><style>body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#f8f8f8;margin:0;padding:0;}.container{max-width:600px;margin:30px auto;background-color:#ffffff;padding:0;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.1);}.header{background-color:#3f51b5;color:#ffffff;padding:25px 0;text-align:center;border-radius:10px 10px 0 0;}.header h2{margin:0;font-size:24px;}.content{padding:30px 40px;text-align:center;color:#333;line-height:1.6;}.content p{margin-bottom:15px;font-size:16px;}.cta-button{background-color:#ff9800;color:#ffffff;padding:15px 35px;text-decoration:none;font-weight:700;border-radius:8px;display:inline-block;margin-top:30px;font-size:18px;transition:background-color 0.3s;}.cta-button:hover{background-color:#f57c00;}.product-list{margin:30px 0;border-top:2px solid #eeeeee;border-bottom:2px solid #eeeeee;padding:15px 0;background-color:#fafafa;}.product-list ul{list-style:none;padding:0;margin:0;text-align:left;}.product-list li{padding:10px 0;border-bottom:1px dashed #e0e0e0;font-size:14px;}.product-list li:last-child{border-bottom:none;}.footer{margin-top:0;padding:20px;font-size:12px;color:#777;text-align:center;background-color:#f4f4f4;border-radius:0 0 10px 10px;}</style></head><body><div class=\"container\"><div class=\"header\"><h2>🛒 ¡Hemos guardado tus productos!</h2></div><div class=\"content\"><p>Hola <strong>[NOMBRE_CLIENTE]</strong>,</p><p>Notamos que dejaste algunos artículos increíbles en tu carrito. **¡Están listos cuando tú lo estés!**</p><div class=\"product-list\"><p style=\"font-weight:bold; color:#3f51b5;\">Artículos que te esperan:</p><ul>[LISTA_PRODUCTOS]</ul></div><a href=\"[URL_CARRITO]\" class=\"cta-button\">INICIAR SESIÓN Y COMPLETAR MI COMPRA</a></div><div class=\"footer\"><p>Si tienes alguna duda, contáctanos. ¡Gracias por elegir Arka!</p><p style=\"margin-top:5px; font-size:10px;\">© [AÑO ACTUAL] Arka E-commerce</p></div></div></body></html>";
+
+    private final RestTemplate restTemplate = new RestTemplate();
 
     public NotificationCartAbandonedService(CartRepository cartRepository,
-                                            CartAdminService cartAdminService,
                                             CartDetailRepository cartDetailRepository,
-                                            CartCustomerService cartCustomerService) {
+                                            AuthClient authClient,
+                                            InventarioClient inventarioClient) {
         this.cartRepository = cartRepository;
-        this.cartAdminService = cartAdminService;
         this.cartDetailRepository = cartDetailRepository;
-        this.cartCustomerService = cartCustomerService;
+        this.authClient = authClient;
+        this.inventarioClient = inventarioClient;
     }
 
+
+    // Tarea programada para detectar carritos abandonados y notificar vía email
     @Scheduled(cron = "${lambda.email.cron-expression}")
     private void detectarYNotificarCarritosAbandonados() {
         System.out.println("Buscando carritos abandonados según la expresión Cron...");
@@ -36,13 +48,13 @@ public class NotificationCartAbandonedService {
         cartRepository.findAll()
                 .filter(cart -> !cart.isEmailEnviado() && !cart.isEstado() && cart.getNumeroProductos() > 0)
                 .flatMap(cart ->
-                        // obterner el usuario del carrito
-                        cartAdminService.getConsultUserInAuth(cart.getUserId())
-                                // por cada usuario obtener la lista de productos del carrito y mapear a ProductoAbandonado
+                        // Obtener el usuario del carrito
+                        authClient.consultarUsuario(cart.getUserId())
+                                // Por cada usuario obtener la lista de productos del carrito
                                 .flatMap(user ->
                                         cartDetailRepository.findAllByCarritoId(cart.getId())
                                                 .flatMap(detail ->
-                                                        cartCustomerService.consultarProductoInventario(detail.getProductoId())
+                                                        inventarioClient.consultarProducto(detail.getProductoId())
                                                                 .map(producto -> {
                                                                     ProductoAbandonado pa = new ProductoAbandonado();
                                                                     pa.setNombreProducto(producto.getNombre());
@@ -61,25 +73,18 @@ public class NotificationCartAbandonedService {
                                                     cart.setEmailEnviado(true);
                                                     cartRepository.save(cart).subscribe();
 
-                                                    ConstruirJson(carrito);
+                                                    construirJson(carrito);
                                                     return carrito;
                                                 })
                                 )
                 )
-                // aquí se puede invocar el envío de correo; por ahora se imprime
                 .doOnNext(carrito -> System.out.println("Carrito preparado para notificar a: " + carrito.getEmailCliente()))
                 .doOnError(e -> System.err.println("Error detectando carritos: " + e.getMessage()))
                 .subscribe();
-
-
     }
 
-    // construcción del json de carrito abandonado y llamado a la lambda para enviar el correo
-    private static final String TEMPLATE_CARRITO =
-                        "<!DOCTYPE html><html><head><title>¡Tu Carrito Te Espera! - Arka</title><style>body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#f8f8f8;margin:0;padding:0;}.container{max-width:600px;margin:30px auto;background-color:#ffffff;padding:0;border-radius:10px;box-shadow:0 4px 12px rgba(0,0,0,0.1);}.header{background-color:#3f51b5;color:#ffffff;padding:25px 0;text-align:center;border-radius:10px 10px 0 0;}.header h2{margin:0;font-size:24px;}.content{padding:30px 40px;text-align:center;color:#333;line-height:1.6;}.content p{margin-bottom:15px;font-size:16px;}.cta-button{background-color:#ff9800;color:#ffffff;padding:15px 35px;text-decoration:none;font-weight:700;border-radius:8px;display:inline-block;margin-top:30px;font-size:18px;transition:background-color 0.3s;}.cta-button:hover{background-color:#f57c00;}.product-list{margin:30px 0;border-top:2px solid #eeeeee;border-bottom:2px solid #eeeeee;padding:15px 0;background-color:#fafafa;}.product-list ul{list-style:none;padding:0;margin:0;text-align:left;}.product-list li{padding:10px 0;border-bottom:1px dashed #e0e0e0;font-size:14px;}.product-list li:last-child{border-bottom:none;}.footer{margin-top:0;padding:20px;font-size:12px;color:#777;text-align:center;background-color:#f4f4f4;border-radius:0 0 10px 10px;}</style></head><body><div class=\"container\"><div class=\"header\"><h2>🛒 ¡Hemos guardado tus productos!</h2></div><div class=\"content\"><p>Hola <strong>[NOMBRE_CLIENTE]</strong>,</p><p>Notamos que dejaste algunos artículos increíbles en tu carrito. **¡Están listos cuando tú lo estés!**</p><div class=\"product-list\"><p style=\"font-weight:bold; color:#3f51b5;\">Artículos que te esperan:</p><ul>[LISTA_PRODUCTOS]</ul></div><a href=\"[URL_CARRITO]\" class=\"cta-button\">INICIAR SESIÓN Y COMPLETAR MI COMPRA</a></div><div class=\"footer\"><p>Si tienes alguna duda, contáctanos. ¡Gracias por elegir Arka!</p><p style=\"margin-top:5px; font-size:10px;\">© [AÑO ACTUAL] Arka E-commerce</p></div></div></body></html>";
-    private final RestTemplate restTemplate = new RestTemplate();
-
-    private void ConstruirJson(CarritoAbandonado carrito) {
+    // Construye el contenido del email en formato HTML y llama a la Lambda para envío
+    private void construirJson(CarritoAbandonado carrito) {
         String html = TEMPLATE_CARRITO;
         html = html.replace("[NOMBRE_CLIENTE]", carrito.getNombreCliente());
         html = html.replace("[URL_CARRITO]", carrito.getUrlLogin());
@@ -93,24 +98,20 @@ public class NotificationCartAbandonedService {
         html = html.replace("[LISTA_PRODUCTOS]", productosHtml.toString());
 
         EmailRequest emailRequest = new EmailRequest();
-            emailRequest.setDestination(carrito.getEmailCliente());
-            emailRequest.setAsunto("¡Tu Carrito Te Espera! 🛒 - Arka");
-            emailRequest.setCuerpoMensaje(html);
-            emailRequest.setTipoEvento("CARRITO_ABANDONADO");
+        emailRequest.setDestination(carrito.getEmailCliente());
+        emailRequest.setAsunto("¡Tu Carrito Te Espera! 🛒 - Arka");
+        emailRequest.setCuerpoMensaje(html);
+        emailRequest.setTipoEvento("CARRITO_ABANDONADO");
 
         llamarLambda(emailRequest);
     }
 
-    @Value("${lambda.email.url}")
-    private String lambdaEmailUrl;
-
+    // Llama a la función Lambda para enviar el email
     private void llamarLambda(EmailRequest request) {
         try {
-            // Realiza la llamada HTTP POST a la URL de tu Lambda
             restTemplate.postForObject(lambdaEmailUrl, request, Void.class);
             System.out.println("Correo enviado con éxito a la Lambda para: " + request.getDestination());
         } catch (Exception e) {
-            // Manejo de errores de conexión o de la Lambda
             System.err.println("Error al llamar a la Lambda: " + e.getMessage());
         }
     }
